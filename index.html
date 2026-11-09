@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI 内容转 Word</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<style>
+:root{--ink:#172b3a;--muted:#607080;--line:#cbd5df;--blue:#2358c4;--paper:#fff;--bg:#e9eef2}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 "Microsoft YaHei",Arial,sans-serif}
+header{padding:17px 24px;background:#f9fbfc;border-bottom:1px solid var(--line)}h1{font-size:21px;margin:0}header p{color:var(--muted);margin:4px 0 0}
+main{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:15px;padding:16px;max-width:1700px;margin:auto;height:calc(100vh - 83px)}
+.pane{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:14px;display:flex;flex-direction:column;min-height:0}
+.pane-title{font-size:15px;font-weight:700;margin-bottom:9px}
+.input-wrap{display:flex;flex:1;min-height:0}
+textarea{width:100%;resize:none;border:1px solid var(--line);border-radius:6px;padding:14px;font:14px/1.65 Consolas,"Microsoft YaHei",monospace;color:#1b2630;outline:none}
+textarea:focus{border-color:var(--blue);box-shadow:0 0 0 2px #2358c422}
+.actions{display:flex;gap:8px;flex-wrap:wrap;padding-top:11px}
+button{border:1px solid var(--line);border-radius:6px;padding:8px 14px;background:white;color:var(--ink);font:inherit;cursor:pointer}
+button:hover{border-color:var(--blue);color:var(--blue)}button:focus-visible{outline:3px solid #8db5ff;outline-offset:2px}
+button.primary{background:var(--blue);color:white;border-color:var(--blue)}button:disabled{opacity:.6;cursor:wait}
+#status{min-height:22px;color:var(--muted);font-size:13px;padding-top:6px}
+#preview{flex:1;min-height:0;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:26px 30px;color:#222;background:#fff;font-family:Cambria,"Times New Roman","Songti SC",serif;font-size:16px;line-height:1.75;overflow-wrap:anywhere}
+#preview h1,#preview h2,#preview h3,#preview h4{font-family:"Microsoft YaHei",sans-serif;color:#162a42;line-height:1.35}
+#preview h1{font-size:25px}#preview h2{font-size:21px;border-bottom:1px solid #d5dde5;padding-bottom:5px}#preview h3{font-size:18px}
+#preview p{margin:.65em 0}#preview ul,#preview ol{padding-left:1.8em}
+#preview table{border-collapse:collapse;width:100%;margin:14px 0;font-size:.95em}
+#preview th,#preview td{border:1px solid #8d9aa7;padding:6px 9px;text-align:left}#preview th{background:#edf2f6}
+#preview pre{white-space:pre-wrap;background:#f1f3f5;padding:12px;border-left:3px solid #718096;font:13px/1.5 Consolas,monospace}
+#preview blockquote{border-left:3px solid #8194a7;margin:12px 0;padding:3px 14px;color:#4c5b68}
+#preview .math-display{overflow-x:auto;text-align:center;margin:14px 0}
+#preview img{max-width:100%}
+.hint{font-size:12px;color:var(--muted);padding-top:6px}
+.api-settings{border:1px solid var(--line);border-radius:6px;margin-top:11px;padding:10px 12px;background:#f9fbfc}
+.api-settings summary{cursor:pointer;font-weight:600}.api-fields{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.api-fields label{display:flex;flex-direction:column;gap:4px;font-size:13px}.api-fields label:first-child{grid-column:1/-1}
+.api-fields input{width:100%;min-width:0;padding:7px;border:1px solid var(--line);border-radius:5px;font:inherit}
+.api-settings .actions{padding-top:8px}
+@media(max-width:850px){main{grid-template-columns:1fr;height:auto}.pane{min-height:65vh}}
+@media(max-width:600px){.api-fields{grid-template-columns:1fr}.api-fields label:first-child{grid-column:auto}}
+@media print{header,.input-pane,.actions,#status,.hint{display:none}main{display:block;height:auto;padding:0}.pane{border:0;padding:0}#preview{border:0;overflow:visible}}
+</style>
+</head><body>
+<header><h1>AI 内容 → Word 转换器</h1><p>左侧粘贴 Markdown，右侧按文档样式预览；公式将转换为可复制到 Word 的数学排版。</p></header>
+<main>
+<section class="pane input-pane"><div class="pane-title">粘贴内容</div><div class="input-wrap"><textarea id="input" placeholder="粘贴 AI 回答（支持 Markdown 与 LaTeX）"></textarea></div>
+<div class="actions"><button id="complete">AI 检查/补全</button><button id="clear">清空</button><button class="primary" id="copy">复制排版内容到 Word</button><button id="download" type="button">下载 Word 文档 (.docx)</button></div>
+<details class="api-settings"><summary>AI 接口设置</summary>
+<div class="api-fields"><label>API 地址（完整的 chat/completions 地址）<input id="api-url" type="url" autocomplete="off" spellcheck="false"></label>
+<label>模型名称<input id="api-model" type="text" autocomplete="off" spellcheck="false"></label>
+<label>API 密钥（使用 AI 检查时必填）<input id="api-key" type="password" autocomplete="new-password" spellcheck="false" placeholder="请填写自己的 API 密钥"></label></div>
+<div class="actions"><button id="save-api" type="button">保存接口设置</button><button id="reset-api" type="button">恢复默认接口</button></div>
+<div class="hint">使用 AI 检查需自行填写密钥；密钥仅存于当前浏览器会话，并会直接发送给所填接口。请只使用可信的 HTTPS 服务；浏览器直连接口还需服务方允许跨域访问。不要在公开网页中填写不可信服务的密钥。</div></details>
+<div id="status" aria-live="polite"></div><div class="hint">公式支持 $…$、$$…$$、\(…\)、\[…\]（可跨行）；图片 ![alt](http…) 直接嵌入；有序列表保留起始编号；预览依赖网络加载 KaTeX。</div></section>
+<section class="pane"><div class="pane-title">Word 排版预览</div><div id="preview" aria-live="polite">粘贴内容后将在这里显示排版预览。</div></section>
+</main>
+<script defer src="docx.bundle.js"></script>
+<script defer src="docx-export.js"></script>
+<script>
+(()=>{'use strict';
+const input=document.querySelector('#input'),preview=document.querySelector('#preview'),status=document.querySelector('#status');
+const DEFAULT_API_URL='https://cn-beijing.maas.qianwenaiapi.com/compatible-mode/v1/chat/completions';
+const DEFAULT_MODEL='qwen3.8-flash';
+const apiUrl=document.querySelector('#api-url'),apiModel=document.querySelector('#api-model'),apiKey=document.querySelector('#api-key');
+const configStore=window.sessionStorage,configName='ai-word-api-config';
+function loadConfig(){
+  let saved={};try{saved=JSON.parse(configStore.getItem(configName)||'{}')}catch(e){}
+  apiUrl.value=saved.url||DEFAULT_API_URL;apiModel.value=saved.model||DEFAULT_MODEL;
+  apiKey.value=saved.key||'';
+}
+function getConfig(){
+  const url=apiUrl.value.trim(),model=apiModel.value.trim(),key=apiKey.value.trim();
+  let parsed;try{parsed=new URL(url)}catch(e){throw Error('请输入有效的 API 地址')}
+  if(parsed.protocol!=='https:'&&!(parsed.protocol==='http:'&&['localhost','127.0.0.1','[::1]'].includes(parsed.hostname)))throw Error('接口地址必须是 HTTPS（本机 localhost 可用 HTTP）');
+  if(parsed.username||parsed.password||parsed.hash)throw Error('接口地址不能包含账户、密码或片段');
+  if(!model)throw Error('请输入模型名称');
+  if(!key)throw Error('使用 AI 检查需要填写你自己的 API 密钥');
+  return {url,model,key};
+}
+loadConfig();
+document.querySelector('#save-api').onclick=()=>{
+  try{getConfig();configStore.setItem(configName,JSON.stringify({url:apiUrl.value.trim(),model:apiModel.value.trim(),key:apiKey.value.trim()}));status.textContent='接口设置已保存到当前浏览器会话。'}
+  catch(e){status.textContent=e.message}
+};
+document.querySelector('#reset-api').onclick=()=>{configStore.removeItem(configName);apiUrl.value=DEFAULT_API_URL;apiModel.value=DEFAULT_MODEL;apiKey.value='';status.textContent='已恢复默认接口地址和模型；使用 AI 检查仍需填写自己的密钥。'};
+let rendered='';
+const esc=s=>s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function math(tex,display){
+  if(!window.katex)return '<span class="math-raw">'+esc(display?'\\[ '+tex+' \\]':'$'+tex+'$')+'</span>';
+  try{return window.katex.renderToString(tex,{output:'mathml',displayMode:!!display,throwOnError:true,strict:false})}
+  catch(e){return '<span style="color:#a22" title="KaTeX 无法解析，已保留原文">'+esc(tex)+'</span>'}
+}
+
+function inline(s){
+  let slots=[];const hold=x=>'\u0000'+(slots.push(x)-1)+'\u0000';
+  s=s.replace(/`([^`]+)`/g,(_,x)=>hold('<code>'+esc(x)+'</code>'));
+  s=s.replace(/\\\[([\s\S]+?)\\\]/g,(_,x)=>hold(math(x,true)));
+  s=s.replace(/\$\$([\s\S]+?)\$\$/g,(_,x)=>hold(math(x,true)));
+  s=s.replace(/\\\(([\s\S]+?)\\\)/g,(_,x)=>hold(math(x,false)));
+  s=s.replace(/\$(?!\s)([^$\n]+?)\$/g,(m0,x)=>{if(/^[\d.,%\s]+$/.test(x)||(!/\\/.test(x)&&/[\u4e00-\u9fff]/.test(x)))return m0;return hold(math(x,false))});
+  s=esc(s);
+  s=s.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g,'<em>$1</em>').replace(/~~(.+?)~~/g,'<del>$1</del>').replace(/!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g,'<img src="$2" alt="$1">').replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,'<a href="$2">$1</a>');
+  return s.replace(/\u0000(\d+)\u0000/g,(_,i)=>slots[+i]);
+}
+
+const BLK_START=/^\s*(#{1,6}\s|```|>|\\\[|\\\]|\$\$|([-*+]|\d+[.)])\s)/;
+
+function blocks(src){
+  src=src.replace(/\\{2,}[ \t]*(\[|\])/g,'\\$1');
+  const lines=src.replace(/\r\n?/g,'\n').split('\n');
+  const out=[];let i=0;
+  while(i<lines.length){
+    const l=lines[i];
+    if(!l.trim()){i++;continue}
+    let m;
+    if((m=l.match(/^\s*```(.*)$/))){i++;const b=[];while(i<lines.length&&!/^\s*```/.test(lines[i]))b.push(lines[i++]);if(i<lines.length)i++;out.push('<pre><code>'+esc(b.join('\n'))+'</code></pre>');continue}
+    /* 单行独立公式：\[x\] 或 $$x$$ */
+    if((m=l.match(/^\s*(\\\[|\$\$)\s*([\s\S]*?)\s*(\\\]|\$\$)\s*$/))&&((m[1]==='\\['&&m[3]==='\\]')||(m[1]==='$$'&&m[3]==='$$'))){out.push('<div class="math-display">'+math(m[2],true)+'</div>');i++;continue}
+    /* 跨行独立公式：起始符后内容在后续行 */
+    if((m=l.match(/^\s*(\\\[|\$\$)(.*)$/))){
+      const closeRe=m[1]==='\\['?/^\s*\\\]\s*(.*)$/:/^\s*\$\$\s*(.*)$/;
+      i++;const b=[];if(m[2].trim())b.push(m[2]);
+      while(i<lines.length){const q=lines[i].match(closeRe);if(q){if(q[1].trim())b.push(q[1]);i++;break}b.push(lines[i]);i++}
+      out.push('<div class="math-display">'+math(b.join('\n').trim(),true)+'</div>');continue
+    }
+    if((m=l.match(/^(#{1,6})\s+(.+)$/))){const n=m[1].length;out.push('<h'+n+'>'+inline(m[2])+'</h'+n+'>');i++;continue}
+    if(/^\s*>/.test(l)){const b=[];while(i<lines.length&&/^\s*>/.test(lines[i]))b.push(lines[i++].replace(/^\s*>\s?/,''));out.push('<blockquote>'+b.map(inline).join('<br>')+'</blockquote>');continue}
+    if(/^\s*([-*+]\s+|\d+[.)]\s+)/.test(l)){
+      const ordered=/^\s*\d/.test(l),tag=ordered?'ol':'ul',b=[];
+      const fs=l.match(/^\s*(\d+)/),start=fs&&fs[1]!=='1'?' start="'+fs[1]+'"':'';
+      while(i<lines.length){const q=lines[i].match(/^\s*(?:[-*+]\s+|\d+[.)]\s+)(.*)$/);if(!q)break;b.push('<li>'+inline(q[1])+'</li>');i++}
+      out.push('<'+tag+(ordered?start:'')+'>'+b.join('')+'</'+tag+'>');continue
+    }
+    if(l.includes('|')&&i+1<lines.length&&/^\s*\|?\s*:?-{3,}/.test(lines[i+1])){
+      const cells=x=>x.trim().replace(/^\||\|$/g,'').replace(/\\\|/g,'\u0001').split('|').map(y=>y.trim().replace(/\u0001/g,'|'));
+      const heads=cells(l);i+=2;const rows=[];
+      while(i<lines.length&&lines[i].includes('|'))rows.push(cells(lines[i++]));
+      out.push('<table><thead><tr>'+heads.map(x=>'<th>'+inline(x)+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+heads.map((_,j)=>'<td>'+inline(r[j]||'')+'</td>').join('')+'</tr>').join('')+'</tbody></table>');continue
+    }
+    const p=[l];i++;
+    while(i<lines.length&&lines[i].trim()&&!BLK_START.test(lines[i]))p.push(lines[i++]);
+    out.push('<p>'+p.map(inline).join('<br>')+'</p>');
+  }
+  return out.join('\n');
+}
+
+function render(){
+  rendered=blocks(input.value);
+  preview.innerHTML=rendered||'粘贴内容后将在这里显示排版预览。';
+  if(!window.katex&&/\$\$|\\\[|\\\(/.test(input.value))status.textContent='KaTeX 尚未加载，公式暂显示原文；请检查网络连接。';
+}
+let debT;
+input.addEventListener('input',()=>{clearTimeout(debT);debT=setTimeout(render,200)});
+window.addEventListener('load',render);
+document.querySelector('#clear').onclick=()=>{input.value='';status.textContent='';render()};
+
+/* 剪贴板富文本包成完整 HTML 文档：声明 UTF-8 并带上 Word 可用的基本样式 */
+const styledDoc=h=>'<!doctype html><html><head><meta charset="utf-8"><style>'
+  +'body{font-family:"Microsoft YaHei",SimSun,serif;font-size:12pt;line-height:1.5}'
+  +'h1,h2,h3,h4{font-family:"Microsoft YaHei",sans-serif;color:#162a42}'
+  +'table{border-collapse:collapse}th,td{border:.5pt solid #606060;padding:3pt 6pt}th{background:#edf2f6}'
+  +'pre{font-family:Consolas,monospace;font-size:10pt;background:#f1f3f5;padding:6pt;white-space:pre-wrap}'
+  +'blockquote{border-left:2.25pt solid #8194a7;margin:6pt 0;padding:1pt 9pt;color:#4c5b68}'
+  +'img{max-width:100%}</style></head><body>'+h+'</body></html>';
+
+document.querySelector('#copy').onclick=async()=>{
+  render();if(!input.value.trim()){status.textContent='请先粘贴内容';return}
+  try{
+    if(navigator.clipboard&&window.ClipboardItem){
+      await navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([styledDoc(rendered)],{type:'text/html'}),'text/plain':new Blob([input.value],{type:'text/plain'})})]);
+      status.textContent='已复制排版内容，切换到 Word 按 Ctrl+V。'
+    }else{await navigator.clipboard.writeText(input.value);status.textContent='浏览器不支持富文本复制，已复制纯文本。'}
+  }catch(e){status.textContent='复制失败：请在 HTTPS 或 localhost 页面使用，或手动复制。'}
+};
+
+document.querySelector('#download').onclick=async()=>{
+  if(!input.value.trim()){status.textContent='请先粘贴内容';return}
+  render();
+  const btn=document.querySelector('#download');btn.disabled=true;status.textContent='正在生成 Word 文档……';
+  try{
+    if(!window.DocxExport)throw Error('导出模块未加载，请刷新页面');
+    const {blob,warnings}=await window.DocxExport.create(rendered);
+    const url=URL.createObjectURL(blob),link=document.createElement('a');
+    link.href=url;link.download='AI内容排版.docx';document.body.append(link);link.click();link.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),60000);
+    status.textContent='Word 文档已生成'+(warnings.length?'；注意：'+warnings.slice(0,3).join('；')+(warnings.length>3?'等 '+warnings.length+' 项':''):'。');
+  }catch(e){status.textContent='导出失败：'+e.message}
+  finally{btn.disabled=false}
+};
+
+document.querySelector('#complete').onclick=async()=>{
+  const src=input.value;
+  if(!src.trim()){status.textContent='请先粘贴内容';return}
+  if(src.length>30000){status.textContent='内容超过 30000 字符，请分段处理';return}
+  let config;try{config=getConfig()}catch(e){status.textContent=e.message;return}
+  const btn=document.querySelector('#complete');btn.disabled=true;status.textContent='正在请求模型……';
+  try{
+    const r=await fetch(config.url,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+config.key},body:JSON.stringify({model:config.model,temperature:0.1,messages:[{role:'system',content:'你是 Markdown 保守修复助手。只修复明显的格式残缺，不补写或猜测事实、论证、结论、公式内容；不确定时原样保留。只输出修复后的 Markdown。'},{role:'user',content:'请检查以下内容是否有残缺，只做保守修复：\n\n'+src}]})});
+    const d=await r.json();if(!r.ok)throw Error('接口返回 HTTP '+r.status+'，请检查地址、模型和密钥');
+    const result=d.choices?.[0]?.message?.content;if(!result)throw Error('模型没有返回有效文本');
+    if(confirm('应用模型返回的修改？请核对公式与内容。\n\n'+result.slice(0,1000))){input.value=result;render();status.textContent='已应用修复建议，请核对预览。'}
+    else status.textContent='模型返回了建议，你选择了不应用。';
+  }catch(e){status.textContent='请求失败：'+(e instanceof TypeError?'网络错误或浏览器跨域限制':e.message)+'。'}
+  finally{btn.disabled=false}
+};
+render()})();
+</script></body></html>
